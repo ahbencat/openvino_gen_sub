@@ -1,41 +1,43 @@
-# Hy-MT2 / Hunyuan Dense V1 OpenVINO 模型转换与推理指南
+# Hy-MT2 / Hunyuan Dense V1 → OpenVINO: Conversion & Inference Guide
 
-## 目录
+**English** | [简体中文](README.zh-CN.md)
 
-- [概述](#概述)
-- [环境准备](#环境准备)
-- [脚本一览](#脚本一览)
-- [方法一：optimum-intel 导出 FP16（推荐）](#方法一optimum-intel-导出-fp16推荐)
-- [方法二：NNCF INT4 量化（7B 模型压缩）](#方法二nncf-int4-量化7b-模型压缩)
-- [推理测试](#推理测试)
-- [性能对比](#性能对比)
-- [常见问题](#常见问题)
+## Contents
 
----
-
-## 概述
-
-本项目支持将 **Hy-MT2**（腾讯混元翻译模型，含 1.8B 和 7B 两种规格）转换为 OpenVINO 格式，在 Intel 平台上高效运行。
-
-支持的特性：
-
-- **Stateful KV Cache**：optimum-intel 原生导出，64 个 ReadValue/Assign 内部状态节点
-- **INT4 权重量化**：NNCF 混合精度压缩（83% INT4 + 17% INT8），14GB → 4.17GB
-- **多设备推理**：CPU / Intel Arc GPU / Intel NPU
-- **Chat Template**：自动加载 Hy-MT2 专有 `<|hy_begin▁of▁sentence|>` / `<|hy_User|>` / `<|hy_Assistant|>` 模板
+- [Overview](#overview)
+- [Setup](#setup)
+- [Scripts](#scripts)
+- [Method 1: FP16 export via optimum-intel (recommended)](#method-1-fp16-export-via-optimum-intel-recommended)
+- [Method 2: NNCF INT4 quantization (compressing the 7B)](#method-2-nncf-int4-quantization-compressing-the-7b)
+- [Inference testing](#inference-testing)
+- [Performance](#performance)
+- [FAQ](#faq)
 
 ---
 
-## 环境准备
+## Overview
 
-### Conda 环境
+These scripts convert **Hy-MT2** (Tencent's Hunyuan translation model, available in 1.8B and 7B) to OpenVINO so it runs efficiently on Intel hardware.
+
+Supported:
+
+- **Stateful KV cache** — native optimum-intel export, 64 internal ReadValue/Assign state nodes
+- **INT4 weight quantization** — NNCF mixed precision (83% INT4 + 17% INT8), 14 GB → 4.17 GB
+- **Multi-device inference** — CPU / Intel Arc GPU / Intel NPU
+- **Chat template** — automatically loads Hy-MT2's own `<|hy_begin▁of▁sentence|>` / `<|hy_User|>` / `<|hy_Assistant|>` template
+
+---
+
+## Setup
+
+### Conda environment
 
 ```bash
 conda create -n py310_openvino python=3.10
 conda activate py310_openvino
 ```
 
-### 安装依赖
+### Dependencies
 
 ```bash
 pip install torch torchvision torchaudio --index-url https://download.pytorch.org/whl/cpu
@@ -44,104 +46,104 @@ pip install optimum[openvino]
 pip install transformers
 ```
 
-> **注意**：`nncf` 仅 INT4 量化需要，纯 FP16 导出可跳过。
+> **Note**: `nncf` is only needed for INT4 quantization — skip it for plain FP16 export.
 
-### 脚本目录结构
+### Script layout
 
-转换与推理脚本位于本仓库的 `tools/model_conversion/`：
+The conversion and inference scripts live in `tools/model_conversion/`:
 
 ```
-<仓库根>/
+<repo root>/
 └── tools/model_conversion/
-    ├── convert_hunyuan_optimum.py   # FP16 导出
-    ├── convert_hunyuan_int4.py      # INT4 量化
-    ├── infer_hunyuan_openvino.py    # 推理脚本
-    └── test_openvino_model.py       # 加载冒烟测试
+    ├── convert_hunyuan_optimum.py   # FP16 export
+    ├── convert_hunyuan_int4.py      # INT4 quantization
+    ├── infer_hunyuan_openvino.py    # inference
+    └── test_openvino_model.py       # load smoke test
 ```
 
-### 模型目录结构
+### Model layout
 
-模型不随仓库分发，需自行下载并存放。脚本内的默认路径是开发机上的 Windows 绝对路径：
+Models are not distributed with this repository — download and place them yourself. The defaults baked into the scripts are absolute Windows paths from the development machine:
 
 ```
 D:\Projects\whisper_cpp_win\
-├── Hy-MT2-1.8B\              # 原始 PyTorch 1.8B 模型
-├── Hy-MT2-7B\                # 原始 PyTorch 7B 模型
-├── Hy-MT2-1.8B-ov-optimum\   # 导出后的 OpenVINO FP16 1.8B
-└── Hy-MT2-7B-ov-int4\        # 导出后的 OpenVINO INT4 7B
+├── Hy-MT2-1.8B\              # original PyTorch 1.8B
+├── Hy-MT2-7B\                # original PyTorch 7B
+├── Hy-MT2-1.8B-ov-optimum\   # exported OpenVINO FP16 1.8B
+└── Hy-MT2-7B-ov-int4\        # exported OpenVINO INT4 7B
 ```
 
-> **换机器时**：用 `--model-dir` / `--output-dir` 命令行参数覆盖，或直接改脚本顶部的 `DEFAULT_MODEL_DIR` / `MODEL_DIR` 常量。`test_openvino_model.py` 没有命令行参数，只能改脚本。
+> **On a different machine**: override with the `--model-dir` / `--output-dir` command-line options, or edit the `DEFAULT_MODEL_DIR` / `MODEL_DIR` constants at the top of each script. `test_openvino_model.py` takes no arguments — you have to edit it.
 
 ---
 
-## 脚本一览
+## Scripts
 
-| 脚本 | 用途 | 适用模型 |
-|------|------|----------|
-| `convert_hunyuan_optimum.py` | optimum-intel FP16 导出 + stateful KV cache | 1.8B / 7B |
-| `convert_hunyuan_int4.py` | 两步：先 FP16 导出，再 NNCF INT4 权重量化 | 7B（推荐） |
-| `infer_hunyuan_openvino.py` | 加载 OpenVINO 模型进行翻译推理 | 以上任意导出 |
-| `test_openvino_model.py` | 最小加载 + 生成冒烟测试（无参数，改脚本内常量） | 以上任意导出 |
+| Script | Purpose | Models |
+|--------|---------|--------|
+| `convert_hunyuan_optimum.py` | optimum-intel FP16 export + stateful KV cache | 1.8B / 7B |
+| `convert_hunyuan_int4.py` | Two steps: FP16 export, then NNCF INT4 weight quantization | 7B (recommended) |
+| `infer_hunyuan_openvino.py` | Load an OpenVINO model and run translation inference | any of the above |
+| `test_openvino_model.py` | Minimal load + generate smoke test (no arguments, edit the constants) | any of the above |
 
 ---
 
-## 方法一：optimum-intel 导出 FP16（推荐）
+## Method 1: FP16 export via optimum-intel (recommended)
 
-使用 optimum-intel 的 `main_export()` 管道，一步完成 FP16 + stateful KV cache 导出。
+Uses optimum-intel's `main_export()` pipeline to produce FP16 with a stateful KV cache in one step.
 
-### 命令
+### Commands
 
 ```bash
 cd tools/model_conversion
 
-# 导出 1.8B 模型（默认）
+# Export the 1.8B (default)
 python convert_hunyuan_optimum.py
 
-# 导出 7B 模型（指定路径）
+# Export the 7B (explicit paths)
 python convert_hunyuan_optimum.py \
     --model-dir "D:\Projects\whisper_cpp_win\Hy-MT2-7B" \
     --output-dir "D:\Projects\whisper_cpp_win\Hy-MT2-7B-ov-fp16"
 ```
 
-### 参数说明
+### Options
 
-| 参数 | 默认值 | 说明 |
-|------|--------|------|
-| `--model-dir` | `Hy-MT2-1.8B` | 原始 PyTorch 模型路径 |
-| `--output-dir` | `Hy-MT2-1.8B-ov-optimum` | OpenVINO 输出路径 |
-| `--task` | `text-generation-with-past` | 导出任务（含 KV cache） |
-| `--device` | `CPU` | 导出的参考设备（CPU/GPU） |
-| `--fp32` | (关闭) | 导出 FP32 而非 FP16 |
+| Option | Default | Description |
+|--------|---------|-------------|
+| `--model-dir` | `Hy-MT2-1.8B` | Original PyTorch model path |
+| `--output-dir` | `Hy-MT2-1.8B-ov-optimum` | OpenVINO output path |
+| `--task` | `text-generation-with-past` | Export task (includes KV cache) |
+| `--device` | `CPU` | Reference device for the export (CPU/GPU) |
+| `--fp32` | (off) | Export FP32 instead of FP16 |
 
-### 输出文件
+### Output files
 
 ```
 Hy-MT2-1.8B-ov-optimum/
-├── openvino_model.xml      # 模型结构定义
-├── openvino_model.bin      # 模型权重
-├── config.json             # 模型配置
-├── tokenizer.json          # Tokenizer
-├── tokenizer_config.json   # Tokenizer 配置
-└── chat_template.jinja     # 对话模板
+├── openvino_model.xml      # model topology
+├── openvino_model.bin      # weights
+├── config.json             # model config
+├── tokenizer.json          # tokenizer
+├── tokenizer_config.json   # tokenizer config
+└── chat_template.jinja     # chat template
 ```
 
-### 原理说明
+### How it works
 
-- 自动注册 `hunyuan_v1_dense` 模型类型到 optimum 的 `TasksManager`
-- 复用 `Qwen2OpenVINOConfig`（二者架构一致）
-- `stateful=True` 开启内部 KV cache（64 个状态节点 = 32 层 × key + value）
-- `OVConfig(dtype="fp16")` 防止自动 INT8 量化
+- Registers the `hunyuan_v1_dense` model type with optimum's `TasksManager` at runtime
+- Reuses `Qwen2OpenVINOConfig` (the two architectures match)
+- `stateful=True` enables the internal KV cache (64 state nodes = 32 layers × key + value)
+- `OVConfig(dtype="fp16")` prevents automatic INT8 quantization
 
 ---
 
-## 方法二：NNCF INT4 量化（7B 模型压缩）
+## Method 2: NNCF INT4 quantization (compressing the 7B)
 
-两步完成：先用 optimum-intel 导出 FP16，再用 NNCF 做 INT4 权重量化。
+Two steps: export FP16 with optimum-intel, then apply NNCF INT4 weight quantization.
 
-适合将 7B 模型从 ~14GB 压缩到 ~4GB。
+Intended for taking the 7B from ~14 GB down to ~4 GB.
 
-### 命令
+### Commands
 
 ```bash
 cd tools/model_conversion
@@ -149,114 +151,114 @@ cd tools/model_conversion
 python convert_hunyuan_int4.py
 ```
 
-### 参数说明
+### Options
 
-| 参数 | 默认值 | 说明 |
-|------|--------|------|
-| `--device` | `CPU` | FP16 导出的参考设备 |
-| `--no-clean` | (关闭) | 不删除已有的 FP16 临时目录 |
+| Option | Default | Description |
+|--------|---------|-------------|
+| `--device` | `CPU` | Reference device for the FP16 export |
+| `--no-clean` | (off) | Keep an existing FP16 temp directory instead of deleting it |
 
-### INT4 量化细节
+### Quantization details
 
 ```python
 nncf.compress_weights(
     model,
-    mode=nncf.CompressWeightsMode.INT4_SYM,  # 对称 INT4
-    group_size=128,                            # 分组大小
+    mode=nncf.CompressWeightsMode.INT4_SYM,  # symmetric INT4
+    group_size=128,                            # group size
     ratio=0.9,                                 # 90% INT4 + 10% INT8
 )
 ```
 
-- 混合精度：149/224 层 INT4 + 75/224 层 INT8（重要层保留 INT8）
-- 压缩效果：14 GB → 4.17 GB（~70% 压缩率）
+- Mixed precision: 149/224 layers INT4 + 75/224 layers INT8 (sensitive layers stay INT8)
+- Result: 14 GB → 4.17 GB (~70% reduction)
 
-### 注意事项
+### Gotchas
 
-- **Rich/GBK 编码问题**：Windows 中文控制台（代码页 936）无法显示 Rich 进度条的 `•` 字符。脚本已自动处理：
+- **Rich/GBK encoding**: a Chinese Windows console (code page 936) cannot render the `•` character in Rich progress bars. The script already handles this:
 
   ```python
   import rich._windows_renderer
   rich._windows_renderer.legacy_windows_render = lambda buffer, term: None
   ```
 
-- **Windows .bin 文件锁定**：`core.read_model()` 会内存映射 .bin 文件，同一目录下无法覆盖保存。脚本使用临时目录保存 INT4 结果后 `shutil.move()` 到目标位置。
-- **跨盘符移动**：使用 `shutil.move()` 而非 `Path.rename()` 以支持 C: → D: 的跨盘移动。
+- **Windows .bin file locking**: `core.read_model()` memory-maps the .bin file, so you cannot save over it in the same directory. The script writes the INT4 result to a temp directory and then `shutil.move()`s it into place.
+- **Cross-drive moves**: `shutil.move()` rather than `Path.rename()`, so C: → D: works.
 
 ---
 
-## 推理测试
+## Inference testing
 
-### 基本用法
+### Basic usage
 
 ```bash
 cd tools/model_conversion
 
-# 默认使用 Hy-MT2-1.8B-ov-optimum（CPU）
+# Defaults to Hy-MT2-1.8B-ov-optimum on CPU
 python infer_hunyuan_openvino.py
 
-# 指定 INT4 7B 模型 + GPU
+# INT4 7B on GPU
 python infer_hunyuan_openvino.py \
     --model-dir "D:\Projects\whisper_cpp_win\Hy-MT2-7B-ov-int4" \
     --device GPU
 
-# 翻译句子
+# Translate a sentence
 python infer_hunyuan_openvino.py \
     --text "The global economy is facing unprecedented challenges." \
     --tgt-lang "中文"
 
-# 翻译到英文
+# Translate into English
 python infer_hunyuan_openvino.py \
     --text "全球经济正面临前所未有的挑战。" \
     --tgt-lang "English"
 
-# 使用自定义 prompt（跳过自动翻译 prompt 构建）
+# Custom prompt (skips the built-in translation prompt)
 python infer_hunyuan_openvino.py \
     --prompt "Summarize the following text: ..." \
     --max-new-tokens 256
 
-# 不使用 chat template（直接输入原始 prompt）
+# Skip the chat template (feed the raw prompt)
 python infer_hunyuan_openvino.py \
     --text "Hello, how are you?" \
     --tgt-lang "中文" \
     --no-chat-template
 ```
 
-### 完整参数
+### Full options
 
-| 参数 | 默认值 | 说明 |
-|------|--------|------|
-| `--model-dir` | `Hy-MT2-1.8B-ov-optimum` | OpenVINO 模型路径 |
-| `--device` | `CPU` | 推理设备（CPU / GPU / NPU / AUTO） |
-| `--text` | (示例文本) | 待翻译文本 |
-| `--src-lang` | 自动 | 源语言 |
-| `--tgt-lang` | `English` | 目标语言 |
-| `--prompt` | (无) | 自定义 prompt，跳过翻译 prompt 构建 |
-| `--no-chat-template` | (关闭) | 不使用 chat template，直接输入 |
-| `--max-new-tokens` | `512` | 最大生成长度 |
-| `--temperature` | `0.7` | 采样温度 |
-| `--top-p` | `0.6` | Top-p 采样 |
-| `--top-k` | `20` | Top-k 采样 |
-| `--repetition-penalty` | `1.05` | 重复惩罚系数 |
+| Option | Default | Description |
+|--------|---------|-------------|
+| `--model-dir` | `Hy-MT2-1.8B-ov-optimum` | OpenVINO model path |
+| `--device` | `CPU` | Inference device (CPU / GPU / NPU / AUTO) |
+| `--text` | (sample text) | Text to translate |
+| `--src-lang` | auto | Source language |
+| `--tgt-lang` | `English` | Target language |
+| `--prompt` | (none) | Custom prompt, bypasses translation prompt construction |
+| `--no-chat-template` | (off) | Feed input directly without the chat template |
+| `--max-new-tokens` | `512` | Maximum generation length |
+| `--temperature` | `0.7` | Sampling temperature |
+| `--top-p` | `0.6` | Top-p sampling |
+| `--top-k` | `20` | Top-k sampling |
+| `--repetition-penalty` | `1.05` | Repetition penalty |
 
-### 翻译 Prompt 格式
+### Translation prompt format
 
-脚本自动构建 Hy-MT2 官方推荐的翻译 prompt：
+The script builds Hy-MT2's officially recommended translation prompt:
 
-**中文 → 英文：**
+**Chinese → English:**
 ```
 Translate the following text into English. Note that you should only output the translated result without any additional explanation:
 
 {source_text}
 ```
 
-**英文 → 中文：**
+**English → Chinese:**
 ```
 将以下文本翻译为 中文，注意只需要输出翻译后的结果，不要额外解释：
 
 {source_text}
 ```
 
-### 输出示例
+### Sample output
 
 ```
 ============================================================
@@ -284,9 +286,9 @@ Stats:
   Speed:        7.85 tok/s
 ```
 
-### 快速冒烟测试
+### Quick smoke test
 
-只想确认模型能加载并生成，用 `test_openvino_model.py`。它没有命令行参数，改脚本顶部的 `MODEL_DIR` / `DEVICE` 常量即可：
+To just confirm a model loads and generates, use `test_openvino_model.py`. It takes no command-line arguments — edit the `MODEL_DIR` / `DEVICE` constants at the top:
 
 ```bash
 python test_openvino_model.py
@@ -294,46 +296,46 @@ python test_openvino_model.py
 
 ---
 
-## 性能对比
+## Performance
 
-测试基于 Intel Core Ultra 7 265K + Arc B580 平台：
+Measured on an Intel Core Ultra 7 265K + Arc B580:
 
-| 模型 | 设备 | 速度 | 显存占用 | 备注 |
-|------|------|------|----------|------|
-| 1.8B FP16 | CPU | ~10 tok/s | ~3.5 GB | 轻量快速 |
-| 1.8B FP16 | GPU (Arc B580) | ~30+ tok/s | ~3.5 GB | 最快选项 |
-| 7B INT4 | CPU | 2.45 tok/s | ~4.2 GB | 离线可用 |
-| 7B INT4 | GPU (Arc B580) | 7.85 tok/s | ~4.2 GB | 推荐配置 |
-| 7B INT4 | NPU (AI Boost) | — | — | 不支持动态 shape |
+| Model | Device | Speed | Footprint | Notes |
+|-------|--------|-------|-----------|-------|
+| 1.8B FP16 | CPU | ~10 tok/s | ~3.5 GB | light and quick |
+| 1.8B FP16 | GPU (Arc B580) | ~30+ tok/s | ~3.5 GB | fastest option |
+| 7B INT4 | CPU | 2.45 tok/s | ~4.2 GB | works offline |
+| 7B INT4 | GPU (Arc B580) | 7.85 tok/s | ~4.2 GB | recommended |
+| 7B INT4 | NPU (AI Boost) | — | — | dynamic shapes unsupported |
 
-**NPU 限制说明**：Intel NPU 要求模型完全静态 shape，而 stateful KV cache 模型包含动态变长序列维度。NPU 适用于固定尺寸的小模型，不支持大语言模型的变长推理。
+**On the NPU limitation**: Intel's NPU requires fully static shapes, while a stateful-KV-cache model carries a dynamic variable-length sequence dimension. The NPU suits small fixed-size models; it cannot do variable-length LLM inference.
 
 ---
 
-## 常见问题
+## FAQ
 
-### Q: 转换时报错 `'hunyuan_v1_dense' is not registered`
+### Q: Conversion fails with `'hunyuan_v1_dense' is not registered`
 
-optimum-intel 官方未内置 `hunyuan_v1_dense` 的 OpenVINO 导出配置。脚本通过 `TasksManager.create_register()` 在运行时注册，复用 `Qwen2OpenVINOConfig`。确保使用 `convert_hunyuan_optimum.py` 而非直接调用 optimum CLI。
+optimum-intel does not ship an OpenVINO export config for `hunyuan_v1_dense`. The scripts register one at runtime via `TasksManager.create_register()`, reusing `Qwen2OpenVINOConfig`. Make sure you run `convert_hunyuan_optimum.py` rather than calling the optimum CLI directly.
 
-### Q: Rich 进度条报 `UnicodeEncodeError: 'gbk' codec can't encode character`
+### Q: Rich progress bar throws `UnicodeEncodeError: 'gbk' codec can't encode character`
 
-Windows 中文控制台（代码页 936）无法显示 Rich 的特殊字符。解决方法已在 `convert_hunyuan_int4.py` 中内置：
+A Chinese Windows console (code page 936) cannot render Rich's special characters. `convert_hunyuan_int4.py` already works around this:
 
 ```bash
-# 如果手动运行 NNCF，添加环境变量
+# If you run NNCF manually, set the environment variable
 set PYTHONIOENCODING=utf-8
 ```
 
-### Q: OpenVINO 编译模型时报 `to_shape was called on a dynamic shape`
+### Q: OpenVINO reports `to_shape was called on a dynamic shape` when compiling
 
-模型包含动态维度。在 NPU 设备上编译需要静态 shape，换用 CPU 或 GPU 即可。
+The model contains dynamic dimensions. Compiling for the NPU requires static shapes — switch to CPU or GPU.
 
-### Q: GPU 推理时加载很慢（~18秒）
+### Q: GPU inference takes ~18 s to load
 
-这是 OpenVINO 在 GPU 上的模型编译时间，与模型大小成正比。模型编译后会缓存，后续加载会更快。推理速度不受影响。
+That is OpenVINO's model compilation time on the GPU, proportional to model size. Compiled models are cached, so subsequent loads are faster. Inference speed is unaffected.
 
-### Q: 如何查看 OpenVINO 可用设备？
+### Q: How do I list the available OpenVINO devices?
 
 ```python
 import openvino as ov

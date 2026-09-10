@@ -8,3 +8,6 @@ __pycache__/
 
 # OpenVINO 编译缓存（video_to_subtitle.py --cache-dir 默认值）
 model_cache/
+
+# Claude Code 本地配置
+.claude/settings.local.json
