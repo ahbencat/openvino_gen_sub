@@ -26,6 +26,13 @@ Supported:
 - **Multi-device inference** — CPU / Intel Arc GPU / Intel NPU
 - **Chat template** — automatically loads Hy-MT2's own `<|hy_begin▁of▁sentence|>` / `<|hy_User|>` / `<|hy_Assistant|>` template
 
+> **Don't want to convert anything?** The INT4-quantized 7B produced by these scripts is published on ModelScope: **[ahbencat/Hy-MT2-7B-ov-int4](https://modelscope.cn/models/ahbencat/Hy-MT2-7B-ov-int4)** (~4.2 GB).
+>
+> ```bash
+> pip install modelscope
+> modelscope download --model ahbencat/Hy-MT2-7B-ov-int4 --local_dir ./Hy-MT2-7B-ov-int4
+> ```
+
 ---
 
 ## Setup
@@ -138,6 +145,8 @@ Hy-MT2-1.8B-ov-optimum/
 ---
 
 ## Method 2: NNCF INT4 quantization (compressing the 7B)
+
+> The output of this section is already available as a download — see [ahbencat/Hy-MT2-7B-ov-int4](https://modelscope.cn/models/ahbencat/Hy-MT2-7B-ov-int4). Follow the steps below only if you want to quantize a different model or tweak the settings.
 
 Two steps: export FP16 with optimum-intel, then apply NNCF INT4 weight quantization.
 

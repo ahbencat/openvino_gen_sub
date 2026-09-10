@@ -26,6 +26,13 @@
 - **多设备推理**：CPU / Intel Arc GPU / Intel NPU
 - **Chat Template**：自动加载 Hy-MT2 专有 `<|hy_begin▁of▁sentence|>` / `<|hy_User|>` / `<|hy_Assistant|>` 模板
 
+> **不想自己转换？** 本脚本产出的 INT4 量化 7B 模型已发布到 ModelScope：**[ahbencat/Hy-MT2-7B-ov-int4](https://modelscope.cn/models/ahbencat/Hy-MT2-7B-ov-int4)**（约 4.2 GB）。
+>
+> ```bash
+> pip install modelscope
+> modelscope download --model ahbencat/Hy-MT2-7B-ov-int4 --local_dir ./Hy-MT2-7B-ov-int4
+> ```
+
 ---
 
 ## 环境准备
@@ -138,6 +145,8 @@ Hy-MT2-1.8B-ov-optimum/
 ---
 
 ## 方法二：NNCF INT4 量化（7B 模型压缩）
+
+> 本节的产物已可直接下载，见 [ahbencat/Hy-MT2-7B-ov-int4](https://modelscope.cn/models/ahbencat/Hy-MT2-7B-ov-int4)。只有在需要量化其他模型或调整参数时，才需要按下面的步骤自行操作。
 
 两步完成：先用 optimum-intel 导出 FP16，再用 NNCF 做 INT4 权重量化。
 

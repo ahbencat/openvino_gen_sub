@@ -56,7 +56,20 @@ pip install openvino nncf optimum[openvino] transformers soundfile silero-vad
 
 ## 快速开始
 
-模型不随仓库分发，需自行转换：
+### 方式一：下载已转换好的模型
+
+INT4 量化后的 7B 模型已发布到 ModelScope，开箱即用：
+
+**[ahbencat/Hy-MT2-7B-ov-int4](https://modelscope.cn/models/ahbencat/Hy-MT2-7B-ov-int4)** —— Hy-MT2 7B，OpenVINO INT4，约 4.2 GB
+
+```bash
+pip install modelscope
+modelscope download --model ahbencat/Hy-MT2-7B-ov-int4 --local_dir ./Hy-MT2-7B-ov-int4
+```
+
+之后用 `--model-dir ./Hy-MT2-7B-ov-int4` 指向它即可。
+
+### 方式二：自行转换
 
 ```bash
 cd tools/model_conversion
