@@ -1,0 +1,16 @@
+# Dependencies for the video subtitle generator
+# Install: pip install -r requirements.txt
+
+# ASR / translation inference (optimum-intel[openvino] pulls in openvino)
+optimum-intel[openvino]>=1.28.0
+transformers>=4.35.0
+openvino>=2024.0.0
+
+# torch: required by the transformers pipeline at runtime; CPU build is enough
+# To force the CPU build: pip install torch --index-url https://download.pytorch.org/whl/cpu
+torch>=2.1
+
+# Audio reading / Silero VAD (VAD segmentation in video_to_subtitle.py)
+numpy>=1.21.0
+soundfile>=0.12.0
+silero-vad>=5.0

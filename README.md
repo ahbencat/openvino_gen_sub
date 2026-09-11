@@ -31,19 +31,24 @@ Whisper's own `translate` task only ever emits English. For any other target lan
 
 ## Components
 
-| Path | Role | Status |
-|------|------|--------|
-| `tools/model_conversion/` | Hunyuan → OpenVINO export (FP16 / INT4) + inference checks | Available |
-| `models/` | Model cards for both models (weights live on ModelScope / HuggingFace) | Available |
-| `video_to_subtitle.py` | Video/audio → SRT (Whisper + VAD) | Not yet uploaded |
-| `translate_srt.py` | SRT → translated SRT (Hy-MT2) | Not yet uploaded |
-| `public/` | Self-contained package: one-shot and batch drivers | Not yet uploaded |
-
-This repository is being published in stages. Model conversion tooling and model cards are in place so far; the pipeline scripts land in follow-up commits.
+| Path | Role |
+|------|------|
+| `generate_and_translate.py` | One-shot driver: video/audio → source SRT → translated SRT |
+| `batch_generate.py` | Batch driver: scan a folder and process every video in it |
+| `video_to_subtitle.py` | Video/audio → SRT (Whisper Large-v3 + Silero VAD) |
+| `translate_srt.py` | SRT → translated SRT (Hy-MT2), timeline preserved |
+| `tools/model_conversion/` | Hunyuan → OpenVINO export (FP16 / INT4) + inference checks |
+| `models/` | Model cards; download the weights into these folders |
 
 ## Requirements
 
-Python 3.10, plus [ffmpeg](https://ffmpeg.org/) on the transcription side.
+Python 3.10, plus [ffmpeg](https://ffmpeg.org/) available on `PATH` (or point the `FFMPEG_PATH` environment variable at the binary).
+
+```bash
+pip install -r requirements.txt
+```
+
+Or assemble the environment manually:
 
 ```bash
 conda create -n py310_openvino python=3.10
@@ -53,50 +58,66 @@ pip install torch torchvision torchaudio --index-url https://download.pytorch.or
 pip install openvino nncf optimum[openvino] transformers soundfile silero-vad
 ```
 
-`nncf` is only needed for INT4 quantization — skip it for plain FP16 export.
+`nncf` is only needed for INT4 quantization — skip it if you only download pre-converted models.
 
 ## Getting started
 
-Both models are needed; neither is committed to this repository — download or convert them yourself.
+### 1. Get the models
 
-### Models
+Both models are needed; the weights are not committed to this repository — download or convert them into the `models/` folders so the script defaults find them:
 
-**Whisper Large-v3 FP16 (OpenVINO)** — for transcription, get it from [OpenVINO/whisper-large-v3-fp16-ov](https://huggingface.co/OpenVINO/whisper-large-v3-fp16-ov) (Apache-2.0):
+**Whisper Large-v3 FP16 (OpenVINO)** — from [OpenVINO/whisper-large-v3-fp16-ov](https://huggingface.co/OpenVINO/whisper-large-v3-fp16-ov) (Apache-2.0):
 
 ```bash
-pip install huggingface_hub
-hf download OpenVINO/whisper-large-v3-fp16-ov --local-dir ./whisper-large-v3-fp16-ov
+hf download OpenVINO/whisper-large-v3-fp16-ov --local-dir models/whisper-large-v3-fp16-ov
 ```
 
-The card in [`models/whisper-large-v3-fp16-ov/`](models/whisper-large-v3-fp16-ov/README.md) documents compatibility (OpenVINO ≥ 2025.2, Optimum Intel ≥ 1.23) and inference examples.
+**Hy-MT2** — download the pre-converted INT4 7B from ModelScope: **[ahbencat/Hy-MT2-7B-ov-int4](https://modelscope.cn/models/ahbencat/Hy-MT2-7B-ov-int4)** (~4.2 GB):
 
-**Hy-MT2 (OpenVINO)** — for translation, two routes:
+```bash
+modelscope download --model ahbencat/Hy-MT2-7B-ov-int4 --local_dir models/Hy-MT2-7B-ov-int4
+```
 
-- **Download the pre-converted INT4 7B** — published on ModelScope, works out of the box: **[ahbencat/Hy-MT2-7B-ov-int4](https://modelscope.cn/models/ahbencat/Hy-MT2-7B-ov-int4)** (~4.2 GB)
+Or convert it yourself (1.8B FP16, or tweaked INT4 settings) — see [`tools/model_conversion/README.md`](tools/model_conversion/README.md).
 
-  ```bash
-  pip install modelscope
-  modelscope download --model ahbencat/Hy-MT2-7B-ov-int4 --local_dir ./Hy-MT2-7B-ov-int4
-  ```
+Any other location works too; point the scripts at it with `--model-dir`.
 
-- **Convert it yourself** (1.8B FP16, or tweaked INT4 settings):
+### 2. Generate subtitles
 
-  ```bash
-  cd tools/model_conversion
+```bash
+# One file: transcribe + translate (defaults: target language 中文)
+python generate_and_translate.py "input.mkv"
 
-  # Hy-MT2 1.8B -> OpenVINO FP16 (stateful KV cache)
-  python convert_hunyuan_optimum.py
+# Known source language, English output
+python generate_and_translate.py "input.mkv" --src-lang ja --tgt-lang English
 
-  # Hy-MT2 7B -> OpenVINO INT4 (~14 GB -> ~4.2 GB)
-  python convert_hunyuan_int4.py
+# Transcription only, no translation
+python generate_and_translate.py "input.mkv" --tgt-lang None
+```
 
-  # Verify the export
-  python infer_hunyuan_openvino.py --text "Hello, world." --tgt-lang "中文"
-  ```
+### 3. Or batch-process a folder
 
-  See [`tools/model_conversion/README.md`](tools/model_conversion/README.md) for the full guide.
+```bash
+# Every video under ./videos (recursive, skips ones with an existing .srt)
+python batch_generate.py "./videos"
 
-Point the scripts at wherever you put them with `--model-dir`.
+# Preview what would run
+python batch_generate.py "./videos" --dry-run
+
+# Custom languages / devices
+python batch_generate.py "./videos" --src-lang ja --tgt-lang English --asr-device GPU.1 --trans-device GPU
+```
+
+### Stage by stage
+
+The drivers above call the two stages via subprocess; you can also run them directly:
+
+```bash
+python video_to_subtitle.py "input.mkv" --task transcribe --language zh   # video → SRT
+python translate_srt.py input.srt --tgt-lang 中文                          # SRT → translated SRT
+```
+
+See each script's `--help` for the full option list.
 
 ## Performance
 
@@ -127,12 +148,11 @@ A 2.5-hour movie completes in roughly 4.4 minutes and yields 333 subtitle entrie
 
 **NPU does not work for either model.** Intel's NPU requires fully static shapes, while both Whisper and the stateful-KV-cache LLM carry a dynamic sequence-length dimension. Use GPU or CPU.
 
-## A note on paths
-
-These are standalone scripts written for one specific machine, not a packaged library. Model directories and the ffmpeg binary are hardcoded as absolute Windows paths at the top of each script. Most are overridable on the command line (`--model-dir`, `--output-dir`); `FFMPEG_PATH` is not — edit the script.
-
 ## Documentation
 
 | Document | Contents |
 |----------|----------|
 | [`tools/model_conversion/README.md`](tools/model_conversion/README.md) | Hunyuan → OpenVINO conversion and inference guide |
+| [`models/SILERO_VAD/README.md`](models/SILERO_VAD/README.md) | Silero VAD model card and recovery steps |
+| [`models/whisper-large-v3-fp16-ov/README.md`](models/whisper-large-v3-fp16-ov/README.md) | Whisper model card |
+| [`models/Hy-MT2-7B-ov-int4/README.md`](models/Hy-MT2-7B-ov-int4/README.md) | Hy-MT2 INT4 model card |

@@ -31,19 +31,24 @@ Whisper 自带的 `translate` 任务只能输出英文。目标语言只要不�
 
 ## 组成部分
 
-| 路径 | 作用 | 状态 |
-|------|------|------|
-| `tools/model_conversion/` | Hunyuan → OpenVINO 导出（FP16 / INT4）+ 推理验证 | 已上传 |
-| `models/` | 两个模型的模型卡（权重在 ModelScope / HuggingFace） | 已上传 |
-| `video_to_subtitle.py` | 视频/音频 → SRT（Whisper + VAD） | 待上传 |
-| `translate_srt.py` | SRT → 翻译后 SRT（Hy-MT2） | 待上传 |
-| `public/` | 独立分发包：一键与批量入口 | 待上传 |
-
-本仓库分批上传，目前模型转换工具与模型卡已就位，流水线脚本在后续提交中补齐。
+| 路径 | 作用 |
+|------|------|
+| `generate_and_translate.py` | 一键入口：视频/音频 → 原语言 SRT → 翻译后 SRT |
+| `batch_generate.py` | 批量入口：扫描整个文件夹，处理其中每个视频 |
+| `video_to_subtitle.py` | 视频/音频 → SRT（Whisper Large-v3 + Silero VAD） |
+| `translate_srt.py` | SRT → 翻译后 SRT（Hy-MT2），时间轴不变 |
+| `tools/model_conversion/` | Hunyuan → OpenVINO 导出（FP16 / INT4）+ 推理验证 |
+| `models/` | 模型卡；权重下载到对应文件夹 |
 
 ## 环境要求
 
-Python 3.10；转录环节另需 [ffmpeg](https://ffmpeg.org/)。
+Python 3.10；转录环节需要 [ffmpeg](https://ffmpeg.org/)（加入 `PATH`，或用 `FFMPEG_PATH` 环境变量指向可执行文件）。
+
+```bash
+pip install -r requirements.txt
+```
+
+或手动组装环境：
 
 ```bash
 conda create -n py310_openvino python=3.10
@@ -53,50 +58,66 @@ pip install torch torchvision torchaudio --index-url https://download.pytorch.or
 pip install openvino nncf optimum[openvino] transformers soundfile silero-vad
 ```
 
-`nncf` 仅 INT4 量化需要，纯 FP16 导出可跳过。
+`nncf` 仅 INT4 量化需要 —— 只下载已转换模型的话可以跳过。
 
 ## 快速开始
 
-两个模型都需要，都不随仓库分发 —— 下载或自行转换。
+### 1. 准备模型
 
-### 模型
+两个模型都需要；权重不随仓库分发 —— 下载或自行转换到 `models/` 对应文件夹，脚本默认路径即可命中：
 
-**Whisper Large-v3 FP16 (OpenVINO)** —— 转录用，从 [OpenVINO/whisper-large-v3-fp16-ov](https://huggingface.co/OpenVINO/whisper-large-v3-fp16-ov) 获取（Apache-2.0）：
+**Whisper Large-v3 FP16 (OpenVINO)** —— 从 [OpenVINO/whisper-large-v3-fp16-ov](https://huggingface.co/OpenVINO/whisper-large-v3-fp16-ov) 获取（Apache-2.0）：
 
 ```bash
-pip install huggingface_hub
-hf download OpenVINO/whisper-large-v3-fp16-ov --local-dir ./whisper-large-v3-fp16-ov
+hf download OpenVINO/whisper-large-v3-fp16-ov --local-dir models/whisper-large-v3-fp16-ov
 ```
 
-[`models/whisper-large-v3-fp16-ov/`](models/whisper-large-v3-fp16-ov/README.md) 里的模型卡说明了兼容版本（OpenVINO ≥ 2025.2、Optimum Intel ≥ 1.23）和推理示例。
+**Hy-MT2** —— 下载已转换的 INT4 7B（ModelScope）：**[ahbencat/Hy-MT2-7B-ov-int4](https://modelscope.cn/models/ahbencat/Hy-MT2-7B-ov-int4)**（约 4.2 GB）：
 
-**Hy-MT2 (OpenVINO)** —— 翻译用，两条路：
+```bash
+modelscope download --model ahbencat/Hy-MT2-7B-ov-int4 --local_dir models/Hy-MT2-7B-ov-int4
+```
 
-- **下载已转换的 INT4 7B** —— 发布在 ModelScope，开箱即用：**[ahbencat/Hy-MT2-7B-ov-int4](https://modelscope.cn/models/ahbencat/Hy-MT2-7B-ov-int4)**（约 4.2 GB）
+或自行转换（1.8B FP16，或自定义 INT4 参数）—— 见 [`tools/model_conversion/README.zh-CN.md`](tools/model_conversion/README.zh-CN.md)。
 
-  ```bash
-  pip install modelscope
-  modelscope download --model ahbencat/Hy-MT2-7B-ov-int4 --local_dir ./Hy-MT2-7B-ov-int4
-  ```
+模型放别处也行，用 `--model-dir` 指向即可。
 
-- **自行转换**（1.8B FP16，或自定义 INT4 参数）：
+### 2. 生成字幕
 
-  ```bash
-  cd tools/model_conversion
+```bash
+# 单个文件：转录 + 翻译（默认目标语言为中文）
+python generate_and_translate.py "input.mkv"
 
-  # Hy-MT2 1.8B -> OpenVINO FP16（stateful KV cache）
-  python convert_hunyuan_optimum.py
+# 指定源语言，输出英文
+python generate_and_translate.py "input.mkv" --src-lang ja --tgt-lang English
 
-  # Hy-MT2 7B -> OpenVINO INT4（~14 GB -> ~4.2 GB）
-  python convert_hunyuan_int4.py
+# 只转录，不翻译
+python generate_and_translate.py "input.mkv" --tgt-lang None
+```
 
-  # 验证导出结果
-  python infer_hunyuan_openvino.py --text "Hello, world." --tgt-lang "中文"
-  ```
+### 3. 或批量处理文件夹
 
-  完整说明见 [`tools/model_conversion/README.zh-CN.md`](tools/model_conversion/README.zh-CN.md)。
+```bash
+# ./videos 下所有视频（递归扫描，已有 .srt 的自动跳过）
+python batch_generate.py "./videos"
 
-模型放哪都行，用 `--model-dir` 指向即可。
+# 预览将要处理的文件
+python batch_generate.py "./videos" --dry-run
+
+# 自定义语言 / 设备
+python batch_generate.py "./videos" --src-lang ja --tgt-lang English --asr-device GPU.1 --trans-device GPU
+```
+
+### 分步执行
+
+上面的入口通过 subprocess 调用两个阶段，也可以直接运行：
+
+```bash
+python video_to_subtitle.py "input.mkv" --task transcribe --language zh   # 视频 → SRT
+python translate_srt.py input.srt --tgt-lang 中文                          # SRT → 翻译后 SRT
+```
+
+完整参数见各脚本 `--help`。
 
 ## 性能实测
 
@@ -127,12 +148,11 @@ hf download OpenVINO/whisper-large-v3-fp16-ov --local-dir ./whisper-large-v3-fp1
 
 **NPU 对这两个模型都不可用。** Intel NPU 要求模型完全静态 shape，而 Whisper 和带 stateful KV cache 的 LLM 都含动态变长序列维度。请使用 GPU 或 CPU。
 
-## 关于路径
-
-这些是为特定机器编写的独立脚本，不是打包好的库。模型目录和 ffmpeg 可执行文件都以 Windows 绝对路径硬编码在各脚本顶部。多数可通过命令行覆盖（`--model-dir`、`--output-dir`）；`FFMPEG_PATH` 不行，需要直接改脚本。
-
 ## 文档
 
 | 文档 | 内容 |
 |------|------|
 | [`tools/model_conversion/README.zh-CN.md`](tools/model_conversion/README.zh-CN.md) | Hunyuan → OpenVINO 转换与推理指南 |
+| [`models/SILERO_VAD/README.zh-CN.md`](models/SILERO_VAD/README.zh-CN.md) | Silero VAD 模型卡与缺失恢复 |
+| [`models/whisper-large-v3-fp16-ov/README.md`](models/whisper-large-v3-fp16-ov/README.md) | Whisper 模型卡 |
+| [`models/Hy-MT2-7B-ov-int4/README.zh-CN.md`](models/Hy-MT2-7B-ov-int4/README.zh-CN.md) | Hy-MT2 INT4 模型卡 |

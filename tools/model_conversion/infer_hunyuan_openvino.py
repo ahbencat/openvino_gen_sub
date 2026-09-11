@@ -1,9 +1,9 @@
 #!/usr/bin/env python3
 """
-Hy-MT2 / Hunyuan Dense V1 OpenVINO 翻译推理脚本
+Hy-MT2 / Hunyuan Dense V1 OpenVINO translation inference script.
 
-默认使用 optimum-intel 导出的 stateful KV cache 模型：
-D:\Projects\whisper_cpp_win\Hy-MT2-1.8B-ov-optimum
+Intended for models exported by convert_hunyuan_optimum.py (FP16,
+stateful KV cache). Point --model-dir at the exported model directory.
 """
 
 import argparse
@@ -17,7 +17,7 @@ from transformers import AutoTokenizer, logging
 
 DEFAULT_MODEL_DIR = Path(r"D:\Projects\whisper_cpp_win\Hy-MT2-1.8B-ov-optimum")
 
-# Hy-MT2 官方推荐推理参数
+# Inference parameters recommended by the Hy-MT2 model card
 RECOMMENDED = {
     "temperature": 0.7,
     "top_p": 0.6,
@@ -32,7 +32,7 @@ def make_translate_prompt(
     source_lang: str = "中文",
     style: str | None = None,
 ) -> str:
-    """基于 README 构建 Hy-MT2 翻译 prompt。"""
+    """Build the Hy-MT2 translation prompt as recommended by its README."""
     if target_lang in ("English", "english", "en", "EN"):
         prompt = (
             f"Translate the following text into {target_lang}. "
@@ -54,7 +54,7 @@ def make_translate_prompt(
 
 
 def load_chat_template(tokenizer, model_dir: Path):
-    """从 chat_template.jinja 加载 chat template（如果 tokenizer 没有内置）。"""
+    """Load the chat template from chat_template.jinja (if the tokenizer has none)."""
     if tokenizer.chat_template is not None:
         return
     jinja = model_dir.parent / "chat_template.jinja"
@@ -103,7 +103,7 @@ def main():
     print(f"  stateful:  {getattr(model, 'stateful', None)}")
     print()
 
-    # 构建 prompt
+    # Build the prompt
     if args.prompt:
         prompt_str = args.prompt
     elif args.text:
