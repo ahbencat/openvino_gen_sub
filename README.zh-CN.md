@@ -56,35 +56,46 @@ pip install openvino nncf optimum[openvino] transformers soundfile silero-vad
 
 ## 快速开始
 
-### 方式一：下载已转换好的模型
+两个模型都需要，都不随仓库分发 —— 下载或自行转换。
 
-INT4 量化后的 7B 模型已发布到 ModelScope，开箱即用：
+### 模型
 
-**[ahbencat/Hy-MT2-7B-ov-int4](https://modelscope.cn/models/ahbencat/Hy-MT2-7B-ov-int4)** —— Hy-MT2 7B，OpenVINO INT4，约 4.2 GB
-
-```bash
-pip install modelscope
-modelscope download --model ahbencat/Hy-MT2-7B-ov-int4 --local_dir ./Hy-MT2-7B-ov-int4
-```
-
-之后用 `--model-dir ./Hy-MT2-7B-ov-int4` 指向它即可。
-
-### 方式二：自行转换
+**Whisper Large-v3 FP16 (OpenVINO)** —— 转录用，从 [OpenVINO/whisper-large-v3-fp16-ov](https://huggingface.co/OpenVINO/whisper-large-v3-fp16-ov) 获取（Apache-2.0）：
 
 ```bash
-cd tools/model_conversion
-
-# Hy-MT2 1.8B -> OpenVINO FP16（stateful KV cache）
-python convert_hunyuan_optimum.py
-
-# Hy-MT2 7B -> OpenVINO INT4（~14 GB -> ~4.2 GB）
-python convert_hunyuan_int4.py
-
-# 验证导出结果
-python infer_hunyuan_openvino.py --text "Hello, world." --tgt-lang "中文"
+pip install huggingface_hub
+hf download OpenVINO/whisper-large-v3-fp16-ov --local-dir ./whisper-large-v3-fp16-ov
 ```
 
-完整说明见 [`tools/model_conversion/README.zh-CN.md`](tools/model_conversion/README.zh-CN.md)。
+[`models/whisper-large-v3-fp16-ov/`](models/whisper-large-v3-fp16-ov/README.md) 里的模型卡说明了兼容版本（OpenVINO ≥ 2025.2、Optimum Intel ≥ 1.23）和推理示例。
+
+**Hy-MT2 (OpenVINO)** —— 翻译用，两条路：
+
+- **下载已转换的 INT4 7B** —— 发布在 ModelScope，开箱即用：**[ahbencat/Hy-MT2-7B-ov-int4](https://modelscope.cn/models/ahbencat/Hy-MT2-7B-ov-int4)**（约 4.2 GB）
+
+  ```bash
+  pip install modelscope
+  modelscope download --model ahbencat/Hy-MT2-7B-ov-int4 --local_dir ./Hy-MT2-7B-ov-int4
+  ```
+
+- **自行转换**（1.8B FP16，或自定义 INT4 参数）：
+
+  ```bash
+  cd tools/model_conversion
+
+  # Hy-MT2 1.8B -> OpenVINO FP16（stateful KV cache）
+  python convert_hunyuan_optimum.py
+
+  # Hy-MT2 7B -> OpenVINO INT4（~14 GB -> ~4.2 GB）
+  python convert_hunyuan_int4.py
+
+  # 验证导出结果
+  python infer_hunyuan_openvino.py --text "Hello, world." --tgt-lang "中文"
+  ```
+
+  完整说明见 [`tools/model_conversion/README.zh-CN.md`](tools/model_conversion/README.zh-CN.md)。
+
+模型放哪都行，用 `--model-dir` 指向即可。
 
 ## 性能实测
 

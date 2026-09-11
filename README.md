@@ -56,35 +56,46 @@ pip install openvino nncf optimum[openvino] transformers soundfile silero-vad
 
 ## Getting started
 
-### Option A — download a pre-converted model
+Both models are needed; neither is committed to this repository — download or convert them yourself.
 
-The INT4-quantized 7B is published on ModelScope and works out of the box:
+### Models
 
-**[ahbencat/Hy-MT2-7B-ov-int4](https://modelscope.cn/models/ahbencat/Hy-MT2-7B-ov-int4)** — Hy-MT2 7B, OpenVINO INT4, ~4.2 GB
-
-```bash
-pip install modelscope
-modelscope download --model ahbencat/Hy-MT2-7B-ov-int4 --local_dir ./Hy-MT2-7B-ov-int4
-```
-
-Then point the scripts at it with `--model-dir ./Hy-MT2-7B-ov-int4`.
-
-### Option B — convert it yourself
+**Whisper Large-v3 FP16 (OpenVINO)** — for transcription, get it from [OpenVINO/whisper-large-v3-fp16-ov](https://huggingface.co/OpenVINO/whisper-large-v3-fp16-ov) (Apache-2.0):
 
 ```bash
-cd tools/model_conversion
-
-# Hy-MT2 1.8B -> OpenVINO FP16 (stateful KV cache)
-python convert_hunyuan_optimum.py
-
-# Hy-MT2 7B -> OpenVINO INT4 (~14 GB -> ~4.2 GB)
-python convert_hunyuan_int4.py
-
-# Verify the export
-python infer_hunyuan_openvino.py --text "Hello, world." --tgt-lang "中文"
+pip install huggingface_hub
+hf download OpenVINO/whisper-large-v3-fp16-ov --local-dir ./whisper-large-v3-fp16-ov
 ```
 
-See [`tools/model_conversion/README.md`](tools/model_conversion/README.md) for the full guide.
+The card in [`models/whisper-large-v3-fp16-ov/`](models/whisper-large-v3-fp16-ov/README.md) documents compatibility (OpenVINO ≥ 2025.2, Optimum Intel ≥ 1.23) and inference examples.
+
+**Hy-MT2 (OpenVINO)** — for translation, two routes:
+
+- **Download the pre-converted INT4 7B** — published on ModelScope, works out of the box: **[ahbencat/Hy-MT2-7B-ov-int4](https://modelscope.cn/models/ahbencat/Hy-MT2-7B-ov-int4)** (~4.2 GB)
+
+  ```bash
+  pip install modelscope
+  modelscope download --model ahbencat/Hy-MT2-7B-ov-int4 --local_dir ./Hy-MT2-7B-ov-int4
+  ```
+
+- **Convert it yourself** (1.8B FP16, or tweaked INT4 settings):
+
+  ```bash
+  cd tools/model_conversion
+
+  # Hy-MT2 1.8B -> OpenVINO FP16 (stateful KV cache)
+  python convert_hunyuan_optimum.py
+
+  # Hy-MT2 7B -> OpenVINO INT4 (~14 GB -> ~4.2 GB)
+  python convert_hunyuan_int4.py
+
+  # Verify the export
+  python infer_hunyuan_openvino.py --text "Hello, world." --tgt-lang "中文"
+  ```
+
+  See [`tools/model_conversion/README.md`](tools/model_conversion/README.md) for the full guide.
+
+Point the scripts at wherever you put them with `--model-dir`.
 
 ## Performance
 
