@@ -34,11 +34,12 @@ Whisper's own `translate` task only ever emits English. For any other target lan
 | Path | Role | Status |
 |------|------|--------|
 | `tools/model_conversion/` | Hunyuan → OpenVINO export (FP16 / INT4) + inference checks | Available |
+| `models/` | Model cards for both models (weights live on ModelScope / HuggingFace) | Available |
 | `video_to_subtitle.py` | Video/audio → SRT (Whisper + VAD) | Not yet uploaded |
 | `translate_srt.py` | SRT → translated SRT (Hy-MT2) | Not yet uploaded |
 | `public/` | Self-contained package: one-shot and batch drivers | Not yet uploaded |
 
-This repository is being published in stages. Only the model conversion tooling is in place so far; the rest lands in follow-up commits.
+This repository is being published in stages. Model conversion tooling and model cards are in place so far; the pipeline scripts land in follow-up commits.
 
 ## Requirements
 

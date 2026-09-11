@@ -34,11 +34,12 @@ Whisper 自带的 `translate` 任务只能输出英文。目标语言只要不�
 | 路径 | 作用 | 状态 |
 |------|------|------|
 | `tools/model_conversion/` | Hunyuan → OpenVINO 导出（FP16 / INT4）+ 推理验证 | 已上传 |
+| `models/` | 两个模型的模型卡（权重在 ModelScope / HuggingFace） | 已上传 |
 | `video_to_subtitle.py` | 视频/音频 → SRT（Whisper + VAD） | 待上传 |
 | `translate_srt.py` | SRT → 翻译后 SRT（Hy-MT2） | 待上传 |
 | `public/` | 独立分发包：一键与批量入口 | 待上传 |
 
-本仓库分批上传，目前只有模型转换工具就位，其余部分在后续提交中补齐。
+本仓库分批上传，目前模型转换工具与模型卡已就位，流水线脚本在后续提交中补齐。
 
 ## 环境要求
 
