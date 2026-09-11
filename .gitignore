@@ -13,5 +13,6 @@ model_cache/
 .claude/settings.local.json
 
 # 模型权重不入库：models/ 只保留模型卡 README，权重从 ModelScope / HuggingFace 下载
-# （whisper-large-v3-fp16-ov 现已跟踪；Hy-MT2-7B-ov-int4 待定，先整体忽略）
-models/Hy-MT2-7B-ov-int4/
+models/Hy-MT2-7B-ov-int4/openvino_model.*
+models/Hy-MT2-7B-ov-int4/*.json
+models/Hy-MT2-7B-ov-int4/*.jinja
